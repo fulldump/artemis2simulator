@@ -1,0 +1,510 @@
+
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Artemis II · trayectoria a escala</title>
+  <style>
+    :root {
+      --bg: #070b14;
+      --panel: #0f1726;
+      --text: #e6eefc;
+      --muted: #9fb0d0;
+      --grid: #23304d;
+      --planned: #6b7280;
+      --flown: #4cc9f0;
+      --craft: #ffd166;
+      --earth: #4da3ff;
+      --moon: #d9d9d9;
+      --danger: #ff6b6b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 20% 20%, #0d1424 0%, var(--bg) 55%);
+      color: var(--text);
+      font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+    .wrap {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 16px;
+      padding: 16px;
+      min-height: 100vh;
+    }
+    .panel {
+      background: rgba(15, 23, 38, 0.9);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+    }
+    h1 { font-size: 22px; margin: 0 0 8px; }
+    h2 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; }
+    .meta { color: var(--muted); margin-bottom: 10px; }
+    .kv { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin: 8px 0; }
+    .kv div:last-child { font-variant-numeric: tabular-nums; }
+    .legend { display: grid; gap: 8px; }
+    .leg { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+    .sw { width: 28px; height: 4px; border-radius: 99px; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; }
+    .note {
+      color: var(--muted);
+      font-size: 12px;
+      background: rgba(255,255,255,0.03);
+      border-radius: 12px;
+      padding: 10px;
+    }
+    .controls { display: grid; gap: 8px; }
+    input[type="range"] { width: 100%; }
+    .viz {
+      position: relative;
+      background: #04070d;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      overflow: hidden;
+      min-height: 720px;
+    }
+    svg { width: 100%; height: 100%; display: block; }
+    .overlay {
+      position: absolute;
+      inset: 12px 12px auto auto;
+      background: rgba(10, 14, 24, 0.8);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 10px 12px;
+      color: var(--muted);
+      font-size: 12px;
+      backdrop-filter: blur(8px);
+    }
+    .overlay strong { color: var(--text); }
+    .footer {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      background: rgba(10, 14, 24, 0.78);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 10px 12px;
+      backdrop-filter: blur(8px);
+    }
+    @media (max-width: 1000px) {
+      .wrap { grid-template-columns: 1fr; }
+      .viz { min-height: 540px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <aside class="panel">
+      <h1>Artemis II</h1>
+      <div class="meta">Trayectoria 2D a escala real Tierra‑Luna, con el tramo recorrido resaltado.</div>
+
+      <h2>Estado</h2>
+      <div class="kv"><div>Hora de lanzamiento (UTC)</div><div id="launchUtc"></div></div>
+      <div class="kv"><div>Tiempo transcurrido</div><div id="elapsed"></div></div>
+      <div class="kv"><div>Fase estimada</div><div id="phase"></div></div>
+      <div class="kv"><div>Progreso misión</div><div id="progress"></div></div>
+      <div class="kv"><div>Distancia al centro de la Tierra</div><div id="distEarth"></div></div>
+      <div class="kv"><div>Distancia a la superficie terrestre</div><div id="altEarth"></div></div>
+      <div class="kv"><div>Distancia al centro de la Luna</div><div id="distMoon"></div></div>
+      <div class="kv"><div>Escala</div><div id="scaleLabel"></div></div>
+
+      <h2>Control temporal</h2>
+      <div class="controls">
+        <label for="hours">Mover la cápsula manualmente por la misión</label>
+        <input id="hours" type="range" min="0" max="234" step="0.1" />
+        <div class="kv"><div>Hora de misión seleccionada</div><div id="selectedHours"></div></div>
+      </div>
+
+      <h2>Leyenda</h2>
+      <div class="legend">
+        <div class="leg"><span class="sw" style="background: var(--planned)"></span>Trayectoria completa</div>
+        <div class="leg"><span class="sw" style="background: var(--flown); height:6px;"></span>Recorrido actual</div>
+        <div class="leg"><span class="dot" style="background: var(--craft)"></span>Posición actual</div>
+        <div class="leg"><span class="dot" style="background: var(--earth)"></span>Tierra</div>
+        <div class="leg"><span class="dot" style="background: var(--moon)"></span>Luna</div>
+      </div>
+
+      <h2>Notas</h2>
+      <div class="note">
+        Esta vista usa escala física real en kilómetros tanto en X como en Y. La geometría se apoya en datos y cronología oficiales de NASA para Artemis II, pero el trazado aquí es una reconstrucción visual del perfil nominal de misión, no un sustituto exacto de la efeméride OEM ni del visor AROW.
+      </div>
+    </aside>
+
+    <main class="viz">
+      <svg id="svg" viewBox="0 0 1400 900" preserveAspectRatio="xMidYMid meet" aria-label="Trayectoria de Artemis II"></svg>
+      <div class="overlay">
+        <div><strong>Vista:</strong> marco Tierra‑Luna</div>
+        <div><strong>Escala:</strong> misma escala en ambos ejes</div>
+      </div>
+      <div class="footer">
+        <div id="footerLeft"></div>
+        <div id="footerRight"></div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const CONFIG = {
+      launchUtc: new Date('2026-04-01T22:35:00Z'),
+      missionHours: 234,
+      earthRadiusKm: 6371,
+      moonRadiusKm: 1737.4,
+      moonXKm: 384400,
+      moonYKm: 0,
+      // Hitos apoyados por cronología pública de NASA.
+      // TLI ~ 01/01:37 después del despegue en el overview timeline.
+      phaseHours: {
+        lowEarthOpsEnd: 13.75,
+        highEarthOrbitEnd: 25.62,
+        lunarFlybyStart: 132,
+        lunarFlybyEnd: 138,
+        returnToEarthEnd: 234
+      }
+    };
+
+    const svg = document.getElementById('svg');
+    const slider = document.getElementById('hours');
+    slider.value = elapsedHoursNow().toFixed(1);
+
+    function elapsedHoursNow() {
+      return Math.max(0, Math.min(CONFIG.missionHours, (Date.now() - CONFIG.launchUtc.getTime()) / 36e5));
+    }
+
+    function fmtKm(v) {
+      return new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 }).format(v) + ' km';
+    }
+
+    function fmtHours(h) {
+      const totalMin = Math.max(0, Math.round(h * 60));
+      const days = Math.floor(totalMin / (24 * 60));
+      const rem = totalMin - days * 24 * 60;
+      const hh = Math.floor(rem / 60);
+      const mm = rem % 60;
+      return `T+${String(days).padStart(2,'0')}:${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+    }
+
+    function lerp(a, b, t) {
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    }
+
+    function bezier(p0, p1, p2, p3, n = 200) {
+      const pts = [];
+      for (let i = 0; i <= n; i++) {
+        const t = i / n;
+        const mt = 1 - t;
+        const x = mt**3*p0.x + 3*mt**2*t*p1.x + 3*mt*t**2*p2.x + t**3*p3.x;
+        const y = mt**3*p0.y + 3*mt**2*t*p1.y + 3*mt*t**2*p2.y + t**3*p3.y;
+        pts.push({x, y});
+      }
+      return pts;
+    }
+
+    function circleArc(r, startDeg, endDeg, n = 180) {
+      const pts = [];
+      const s = startDeg * Math.PI / 180;
+      const e = endDeg * Math.PI / 180;
+      for (let i = 0; i <= n; i++) {
+        const t = i / n;
+        const a = s + (e - s) * t;
+        pts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
+      }
+      return pts;
+    }
+
+    // Elipse con la Tierra en uno de los focos, adecuada para la etapa en órbita alta.
+    function focusEllipse(rp, ra, startDeg, endDeg, rotateDeg = 0, n = 220) {
+      const pts = [];
+      const a = (rp + ra) / 2;
+      const e = (ra - rp) / (ra + rp);
+      const p = a * (1 - e * e);
+      const rot = rotateDeg * Math.PI / 180;
+      const s = startDeg * Math.PI / 180;
+      const eA = endDeg * Math.PI / 180;
+      for (let i = 0; i <= n; i++) {
+        const t = i / n;
+        const nu = s + (eA - s) * t;
+        const r = p / (1 + e * Math.cos(nu));
+        const x0 = r * Math.cos(nu);
+        const y0 = r * Math.sin(nu);
+        const x = x0 * Math.cos(rot) - y0 * Math.sin(rot);
+        const y = x0 * Math.sin(rot) + y0 * Math.cos(rot);
+        pts.push({x, y});
+      }
+      return pts;
+    }
+
+    function arcAround(center, radius, startDeg, endDeg, n = 140) {
+      return circleArc(radius, startDeg, endDeg, n).map(p => ({x: p.x + center.x, y: p.y + center.y}));
+    }
+
+    function joinSegments(...segments) {
+      const out = [];
+      for (const seg of segments) {
+        if (!seg.length) continue;
+        if (!out.length) out.push(...seg);
+        else out.push(...seg.slice(1));
+      }
+      return out;
+    }
+
+    function buildTrajectory() {
+      // 1) Órbita baja inicial: ~1.5 vueltas compactas alrededor de la Tierra.
+      const lowOrbit = circleArc(CONFIG.earthRadiusKm + 300, -100, 440, 260);
+
+      // 2) Órbita alta: aproxima el perfil 1,500 x 46,000 mi citado en la prensa técnica.
+      //    En km: ~2,414 x 74,030 sobre la superficie. Radios desde el centro terrestre:
+      const rp = CONFIG.earthRadiusKm + 2414;
+      const ra = CONFIG.earthRadiusKm + 74030;
+      const highOrbit = focusEllipse(rp, ra, -160, 5, 180, 320);
+
+      const hoEnd = highOrbit[highOrbit.length - 1];
+
+      // 3) Tránsito a la Luna, en marco Tierra-Luna, como arco de retorno libre nominal.
+      const toMoon = bezier(
+        hoEnd,
+        { x: 150000, y: 25000 },
+        { x: 300000, y: 60000 },
+        { x: CONFIG.moonXKm - 12000, y: 18000 },
+        260
+      );
+
+      // 4) Sobrevuelo por la cara oculta, a miles de millas de altitud sobre la superficie.
+      const moonFlyby = arcAround(
+        { x: CONFIG.moonXKm, y: CONFIG.moonYKm },
+        10000,
+        120,
+        330,
+        160
+      );
+
+      const flyEnd = moonFlyby[moonFlyby.length - 1];
+
+      // 5) Regreso de retorno libre hasta entrada atmosférica.
+      const returnLeg = bezier(
+        flyEnd,
+        { x: 310000, y: -85000 },
+        { x: 110000, y: -130000 },
+        { x: CONFIG.earthRadiusKm + 120, y: -8000 },
+        340
+      );
+
+      return {
+        segments: { lowOrbit, highOrbit, toMoon, moonFlyby, returnLeg },
+        full: joinSegments(lowOrbit, highOrbit, toMoon, moonFlyby, returnLeg)
+      };
+    }
+
+    const TRAJ = buildTrajectory();
+
+    function phaseAt(hours) {
+      const p = CONFIG.phaseHours;
+      if (hours < p.lowEarthOpsEnd) return 'Órbita terrestre inicial y comprobaciones';
+      if (hours < p.highEarthOrbitEnd) return 'Órbita terrestre alta previa a TLI';
+      if (hours < p.lunarFlybyStart) return 'Tránsito translunar';
+      if (hours < p.lunarFlybyEnd) return 'Sobrevuelo lunar';
+      return 'Trayecto de regreso a la Tierra';
+    }
+
+    function pointAtMissionHour(hours) {
+      const p = CONFIG.phaseHours;
+      const s = TRAJ.segments;
+      if (hours <= p.lowEarthOpsEnd) {
+        return pointAlong(s.lowOrbit, hours / p.lowEarthOpsEnd);
+      }
+      if (hours <= p.highEarthOrbitEnd) {
+        return pointAlong(s.highOrbit, (hours - p.lowEarthOpsEnd) / (p.highEarthOrbitEnd - p.lowEarthOpsEnd));
+      }
+      if (hours <= p.lunarFlybyStart) {
+        return pointAlong(s.toMoon, (hours - p.highEarthOrbitEnd) / (p.lunarFlybyStart - p.highEarthOrbitEnd));
+      }
+      if (hours <= p.lunarFlybyEnd) {
+        return pointAlong(s.moonFlyby, (hours - p.lunarFlybyStart) / (p.lunarFlybyEnd - p.lunarFlybyStart));
+      }
+      return pointAlong(s.returnLeg, (hours - p.lunarFlybyEnd) / (p.returnToEarthEnd - p.lunarFlybyEnd));
+    }
+
+    function flownPathUntil(hours) {
+      const pts = [];
+      const p = CONFIG.phaseHours;
+      const s = TRAJ.segments;
+
+      function take(segment, frac) {
+        const n = Math.max(2, Math.floor((segment.length - 1) * frac) + 1);
+        return segment.slice(0, n);
+      }
+
+      if (hours <= p.lowEarthOpsEnd) return take(s.lowOrbit, hours / p.lowEarthOpsEnd);
+      pts.push(...s.lowOrbit);
+
+      if (hours <= p.highEarthOrbitEnd) return joinSegments(pts, take(s.highOrbit, (hours - p.lowEarthOpsEnd) / (p.highEarthOrbitEnd - p.lowEarthOpsEnd)));
+      pts.push(...s.highOrbit);
+
+      if (hours <= p.lunarFlybyStart) return joinSegments(pts, take(s.toMoon, (hours - p.highEarthOrbitEnd) / (p.lunarFlybyStart - p.highEarthOrbitEnd)));
+      pts.push(...s.toMoon);
+
+      if (hours <= p.lunarFlybyEnd) return joinSegments(pts, take(s.moonFlyby, (hours - p.lunarFlybyStart) / (p.lunarFlybyEnd - p.lunarFlybyStart)));
+      pts.push(...s.moonFlyby);
+
+      return joinSegments(pts, take(s.returnLeg, (hours - p.lunarFlybyEnd) / (p.returnToEarthEnd - p.lunarFlybyEnd)));
+    }
+
+    function pointAlong(points, t) {
+      const clamped = Math.max(0, Math.min(1, t));
+      const idx = clamped * (points.length - 1);
+      const i = Math.floor(idx);
+      const frac = idx - i;
+      if (i >= points.length - 1) return points[points.length - 1];
+      return lerp(points[i], points[i + 1], frac);
+    }
+
+    function bounds(points) {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const p of points) {
+        minX = Math.min(minX, p.x);
+        maxX = Math.max(maxX, p.x);
+        minY = Math.min(minY, p.y);
+        maxY = Math.max(maxY, p.y);
+      }
+      return { minX, maxX, minY, maxY };
+    }
+
+    const allForBounds = [
+      ...TRAJ.full,
+      { x: -CONFIG.earthRadiusKm, y: -CONFIG.earthRadiusKm },
+      { x: CONFIG.earthRadiusKm, y: CONFIG.earthRadiusKm },
+      { x: CONFIG.moonXKm - CONFIG.moonRadiusKm, y: -CONFIG.moonRadiusKm },
+      { x: CONFIG.moonXKm + CONFIG.moonRadiusKm, y: CONFIG.moonRadiusKm }
+    ];
+    const B = bounds(allForBounds);
+
+    const width = 1400;
+    const height = 900;
+    const pad = 60;
+    const scaleX = (width - 2 * pad) / (B.maxX - B.minX);
+    const scaleY = (height - 2 * pad) / (B.maxY - B.minY);
+    const scale = Math.min(scaleX, scaleY); // misma escala en ambos ejes
+
+    function sx(x) { return pad + (x - B.minX) * scale; }
+    function sy(y) { return height - pad - (y - B.minY) * scale; }
+
+    function pathD(points) {
+      return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${sx(p.x).toFixed(2)} ${sy(p.y).toFixed(2)}`).join(' ');
+    }
+
+    function el(name, attrs = {}, children = []) {
+      const node = document.createElementNS('http://www.w3.org/2000/svg', name);
+      for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+      for (const child of children) node.appendChild(child);
+      return node;
+    }
+
+    function draw(hours) {
+      const current = pointAtMissionHour(hours);
+      const flown = flownPathUntil(hours);
+      const distEarth = Math.hypot(current.x, current.y);
+      const distMoon = Math.hypot(current.x - CONFIG.moonXKm, current.y - CONFIG.moonYKm);
+
+      svg.innerHTML = '';
+
+      // Fondo con rejilla ligera.
+      for (let x = 0; x <= width; x += 100) {
+        svg.appendChild(el('line', { x1: x, y1: 0, x2: x, y2: height, stroke: 'rgba(255,255,255,0.04)', 'stroke-width': 1 }));
+      }
+      for (let y = 0; y <= height; y += 100) {
+        svg.appendChild(el('line', { x1: 0, y1: y, x2: width, y2: y, stroke: 'rgba(255,255,255,0.04)', 'stroke-width': 1 }));
+      }
+
+      // Línea Tierra-Luna.
+      svg.appendChild(el('line', {
+        x1: sx(0), y1: sy(0), x2: sx(CONFIG.moonXKm), y2: sy(CONFIG.moonYKm),
+        stroke: 'rgba(255,255,255,0.12)', 'stroke-width': 1.5, 'stroke-dasharray': '6 6'
+      }));
+
+      // Trayectoria completa.
+      svg.appendChild(el('path', {
+        d: pathD(TRAJ.full), fill: 'none', stroke: '#7d8597', 'stroke-opacity': 0.85, 'stroke-width': 2
+      }));
+
+      // Tramo recorrido.
+      svg.appendChild(el('path', {
+        d: pathD(flown), fill: 'none', stroke: getComputedStyle(document.documentElement).getPropertyValue('--flown').trim(),
+        'stroke-width': 5, 'stroke-linecap': 'round'
+      }));
+
+      // Tierra.
+      svg.appendChild(el('circle', {
+        cx: sx(0), cy: sy(0), r: CONFIG.earthRadiusKm * scale,
+        fill: '#1f6feb', stroke: 'rgba(255,255,255,0.35)', 'stroke-width': 1.5
+      }));
+      svg.appendChild(el('text', {
+        x: sx(0), y: sy(0) - CONFIG.earthRadiusKm * scale - 12,
+        fill: '#dbeafe', 'text-anchor': 'middle', 'font-size': 16, 'font-weight': 600
+      }, [document.createTextNode('Tierra')]));
+
+      // Luna.
+      svg.appendChild(el('circle', {
+        cx: sx(CONFIG.moonXKm), cy: sy(CONFIG.moonYKm), r: CONFIG.moonRadiusKm * scale,
+        fill: '#d6d3d1', stroke: 'rgba(255,255,255,0.35)', 'stroke-width': 1.2
+      }));
+      svg.appendChild(el('text', {
+        x: sx(CONFIG.moonXKm), y: sy(CONFIG.moonYKm) - CONFIG.moonRadiusKm * scale - 12,
+        fill: '#f3f4f6', 'text-anchor': 'middle', 'font-size': 16, 'font-weight': 600
+      }, [document.createTextNode('Luna')]));
+
+      // Punto actual.
+      svg.appendChild(el('circle', {
+        cx: sx(current.x), cy: sy(current.y), r: 7.5,
+        fill: '#ffd166', stroke: '#fff7d6', 'stroke-width': 2
+      }));
+      svg.appendChild(el('circle', {
+        cx: sx(current.x), cy: sy(current.y), r: 16,
+        fill: 'none', stroke: 'rgba(255,209,102,0.45)', 'stroke-width': 2
+      }));
+      svg.appendChild(el('line', {
+        x1: sx(current.x) + 12, y1: sy(current.y) - 12, x2: sx(current.x) + 80, y2: sy(current.y) - 50,
+        stroke: '#ffd166', 'stroke-width': 1.5
+      }));
+      svg.appendChild(el('text', {
+        x: sx(current.x) + 86, y: sy(current.y) - 56,
+        fill: '#fff1b5', 'font-size': 15, 'font-weight': 700
+      }, [document.createTextNode('Orion ahora')]));
+
+      // Etiquetas de escala física.
+      const barKm = 50000;
+      const barPx = barKm * scale;
+      const bx = width - 220;
+      const by = height - 70;
+      svg.appendChild(el('line', { x1: bx, y1: by, x2: bx + barPx, y2: by, stroke: '#fff', 'stroke-width': 3 }));
+      svg.appendChild(el('line', { x1: bx, y1: by - 6, x2: bx, y2: by + 6, stroke: '#fff', 'stroke-width': 2 }));
+      svg.appendChild(el('line', { x1: bx + barPx, y1: by - 6, x2: bx + barPx, y2: by + 6, stroke: '#fff', 'stroke-width': 2 }));
+      svg.appendChild(el('text', {
+        x: bx + barPx / 2, y: by - 10, fill: '#fff', 'text-anchor': 'middle', 'font-size': 12
+      }, [document.createTextNode('50,000 km')]));
+
+      document.getElementById('launchUtc').textContent = CONFIG.launchUtc.toISOString().replace('.000Z', 'Z');
+      document.getElementById('elapsed').textContent = fmtHours(hours);
+      document.getElementById('phase').textContent = phaseAt(hours);
+      document.getElementById('progress').textContent = `${(hours / CONFIG.missionHours * 100).toFixed(1)} %`;
+      document.getElementById('distEarth').textContent = fmtKm(distEarth);
+      document.getElementById('altEarth').textContent = fmtKm(Math.max(0, distEarth - CONFIG.earthRadiusKm));
+      document.getElementById('distMoon').textContent = fmtKm(distMoon);
+      document.getElementById('selectedHours').textContent = `${hours.toFixed(1)} h`;
+      document.getElementById('scaleLabel').textContent = `1 px ≈ ${(1 / scale).toFixed(0)} km`;
+      document.getElementById('footerLeft').textContent = `Centro Tierra‑Luna: ${fmtKm(CONFIG.moonXKm)}`;
+      document.getElementById('footerRight').textContent = `${phaseAt(hours)} · ${fmtHours(hours)}`;
+    }
+
+    slider.addEventListener('input', () => draw(parseFloat(slider.value)));
+    draw(parseFloat(slider.value));
+  </script>
+</body>
+</html>
