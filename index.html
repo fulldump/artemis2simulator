@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Misión Artemis II - Seguimiento en Tiempo Real</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Space+Grotesk:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Canvas para el mapa estelar y trayectoria -->
+        <canvas id="spaceMap"></canvas>
+
+        <!-- Panel de Telemetría (Glassmorphism) -->
+        <div class="telemetry-panel">
+            <div class="panel-header">
+                <div class="live-indicator">
+                    <span class="pulsing-dot"></span>
+                    TELEMETRÍA EN DIRECTO
+                </div>
+                <h1>ARTEMIS II</h1>
+                <p class="mission-status">Misión en curso - T+ <span id="met">18:23:55</span></p>
+            </div>
+
+            <div class="data-grid">
+                <div class="data-card">
+                    <span class="data-label">VELOCIDAD APROX.</span>
+                    <span class="data-value" id="vel">0 <span class="unit">km/h</span></span>
+                </div>
+                <div class="data-card">
+                    <span class="data-label">DISTANCIA A LA TIERRA</span>
+                    <span class="data-value" id="dist-earth">0 <span class="unit">km</span></span>
+                </div>
+                <div class="data-card">
+                    <span class="data-label">DISTANCIA A LA LUNA</span>
+                    <span class="data-value" id="dist-moon">0 <span class="unit">km</span></span>
+                </div>
+                <div class="data-card">
+                    <span class="data-label">PROGRESO DEL VIAJE</span>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="progress-bar"></div>
+                    </div>
+                    <div class="progress-stats">
+                        <span id="progress-text">0%</span>
+                        <span>10 DÍAS</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-footer">
+                <p>Simulador de Telemetría. Sistema escalado 1:1.</p>
+                <div class="controls">
+                    <button id="btn-zoom-in">+</button>
+                    <button id="btn-zoom-out">-</button>
+                    <button id="btn-reset">Explorar a Escala Real</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
