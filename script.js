@@ -272,7 +272,7 @@
         ctx.restore();
     }
 
-    // ── Gravity field HEATMAP rendering ──
+    // ── Gravity field HEATMAP rendering (Roche effective potential) ──
     function drawGravityFieldMap(earthScreenPos, moonScreenPos, moonPosKm, scale) {
         const ds = FIELD_DOWNSCALE;
         const fw = Math.ceil(state.width / ds);
@@ -283,104 +283,126 @@
         const imgData = fieldCtx.createImageData(fw, fh);
         const pixels = imgData.data;
 
-        // Screen positions in downscaled coords
         const exS = earthScreenPos.x / ds;
         const eyS = earthScreenPos.y / ds;
         const mxS = moonScreenPos.x / ds;
         const myS = moonScreenPos.y / ds;
-
         const kmPerPx = ds / scale;
 
-        // Compute Earth-Moon distance for L1 calculation
-        const emDist = Math.sqrt(moonPosKm.x * moonPosKm.x + moonPosKm.y * moonPosKm.y + moonPosKm.z * moonPosKm.z);
+        // Earth-Moon distance and orbital mechanics
+        const mx = moonPosKm.x, my = moonPosKm.y;
+        const emDist = Math.sqrt(mx * mx + my * my + moonPosKm.z * moonPosKm.z);
+        const mu = GM_MOON / (GM_EARTH + GM_MOON); // mass ratio ≈ 0.01215
+        const omega2 = (GM_EARTH + GM_MOON) / (emDist * emDist * emDist); // angular velocity²
 
-        // Log scale bounds — tuned to show the full interesting range
-        // At Earth surface: g ≈ 0.00982 km/s², log10 ≈ -2.008
-        // At Moon orbit distance from Earth: g ≈ 2.7e-6, log10 ≈ -5.57
-        // At deep space (far from both): g ≈ 1e-8, log10 ≈ -8
-        const LOG_MIN = -7.5;  // deep space
-        const LOG_MAX = -2.0;  // near surface
-        const LOG_RANGE = LOG_MAX - LOG_MIN;
+        // Barycenter position (km from Earth)
+        const baryX = mx * mu;
+        const baryY = my * mu;
+        const barySx = earthScreenPos.x + baryX * scale;
+        const barySy = earthScreenPos.y - baryY * scale;
+        const baryDsX = barySx / ds;
+        const baryDsY = barySy / ds;
 
-        // Equilibrium contour detection threshold
-        const CONTOUR_WIDTH = 0.08; // how close ratio must be to 0.5 to glow
+        // ── Compute Roche potential at L1 for contour reference ──
+        const rL1fromMoon = emDist * Math.pow(mu / 3, 1.0/3.0);
+        const rL1fromEarth = emDist - rL1fromMoon;
+        const rL1fromBary = rL1fromEarth - Math.sqrt(baryX*baryX + baryY*baryY);
+        const phiL1 = -GM_EARTH / rL1fromEarth - GM_MOON / rL1fromMoon - 0.5 * omega2 * rL1fromBary * rL1fromBary;
 
-        // Color palette:
-        // Earth-dominated: blue shades
-        // Moon-dominated: amber/orange shades  
-        // Equilibrium: bright cyan/white
+        // Potential range for normalization
+        // Deep wells (near surface) are very negative; L-points are less negative
+        // We want to map from deep potential to the L1 potential level
+        const PHI_DEEP = -70.0;   // near Earth surface
+        const PHI_SHALLOW = phiL1 * 0.6; // well above L1 level
+        const PHI_RANGE = PHI_SHALLOW - PHI_DEEP;
+
+        // Contour line parameters
+        const CONTOUR_THICKNESS = 0.012; // relative thickness for potential contours
 
         for (let py = 0; py < fh; py++) {
             for (let px = 0; px < fw; px++) {
                 const idx = (py * fw + px) * 4;
 
-                // Distance to Earth in km
-                const dxE = (px - exS) * kmPerPx;
-                const dyE = (py - eyS) * kmPerPx;
-                const rEarth = Math.sqrt(dxE * dxE + dyE * dyE);
+                // Point position in km (geocentric)
+                const pxKm = (px - exS) * kmPerPx;
+                const pyKm = -(py - eyS) * kmPerPx; // flip Y back
 
-                // Distance to Moon in km
-                const dxM = (px - mxS) * kmPerPx;
-                const dyM = (py - myS) * kmPerPx;
+                // Distances to bodies
+                const rEarth = Math.sqrt(pxKm * pxKm + pyKm * pyKm);
+                const dxM = pxKm - mx;
+                const dyM = pyKm - my;
                 const rMoon = Math.sqrt(dxM * dxM + dyM * dyM);
 
-                // Skip pixels inside bodies
-                if (rEarth < EARTH_RADIUS_KM * 0.8 || rMoon < MOON_RADIUS_KM * 0.8) continue;
+                // Skip interior of bodies
+                if (rEarth < EARTH_RADIUS_KM * 0.7 || rMoon < MOON_RADIUS_KM * 0.7) continue;
 
-                // Gravitational acceleration magnitudes
                 const rE = Math.max(rEarth, EARTH_RADIUS_KM);
                 const rM = Math.max(rMoon, MOON_RADIUS_KM);
+
+                // Distance from barycenter
+                const dbx = pxKm - baryX;
+                const dby = pyKm - baryY;
+                const rBary = Math.sqrt(dbx * dbx + dby * dby);
+
+                // Roche effective potential (co-rotating frame)
+                const phi = -GM_EARTH / rE - GM_MOON / rM - 0.5 * omega2 * rBary * rBary;
+
+                // Normalize potential to [0, 1] range
+                let normPhi = (phi - PHI_DEEP) / PHI_RANGE;
+                normPhi = Math.max(0, Math.min(1, normPhi));
+
+                if (normPhi < 0.005) continue;
+
+                // Dominance: which body's gravity is stronger here
                 const gEarth = GM_EARTH / (rE * rE);
                 const gMoon = GM_MOON / (rM * rM);
-                const gTotal = gEarth + gMoon;
+                const ratio = gEarth / (gEarth + gMoon); // 1 = Earth, 0 = Moon
 
-                // Log-normalized intensity (0 to 1)
-                const logG = Math.log10(gTotal);
-                let intensity = (logG - LOG_MIN) / LOG_RANGE;
-                intensity = Math.max(0, Math.min(1, intensity));
-
-                if (intensity < 0.01) continue;
-
-                // Dominance ratio: 1 = Earth, 0 = Moon
-                const ratio = gEarth / gTotal;
-
-                // Distance from equilibrium (0 at perfect balance)
-                const eqDist = Math.abs(ratio - 0.5);
-
-                // Equilibrium highlight — bright where forces balance
-                const eqGlow = Math.max(0, 1.0 - eqDist / CONTOUR_WIDTH);
-
-                // Base colors by dominance
+                // ── Color by dominance ──
                 let r, g, b;
                 if (ratio > 0.5) {
-                    // Earth-dominated: blue
-                    const t = (ratio - 0.5) * 2; // 0 at boundary, 1 at full Earth
-                    r = Math.round(30 + 20 * (1 - t));
-                    g = Math.round(80 + 60 * (1 - t));
-                    b = Math.round(180 + 75 * t);
+                    const t = (ratio - 0.5) * 2;
+                    // Earth-dominated: deep blue to light blue
+                    r = Math.round(15 + 35 * (1 - t));
+                    g = Math.round(50 + 80 * (1 - t));
+                    b = Math.round(140 + 110 * t);
                 } else {
-                    // Moon-dominated: amber/orange
-                    const t = (0.5 - ratio) * 2; // 0 at boundary, 1 at full Moon
-                    r = Math.round(200 + 55 * t);
-                    g = Math.round(150 + 40 * (1 - t));
-                    b = Math.round(50 - 30 * t);
+                    const t = (0.5 - ratio) * 2;
+                    // Moon-dominated: amber to deep orange
+                    r = Math.round(180 + 75 * t);
+                    g = Math.round(130 + 50 * (1 - t));
+                    b = Math.round(30 - 15 * t);
                 }
 
-                // Blend in equilibrium glow (bright cyan-white)
-                if (eqGlow > 0) {
-                    const eq = eqGlow * eqGlow; // sharpen the glow
-                    r = Math.round(r + (240 - r) * eq);
-                    g = Math.round(g + (255 - g) * eq);
-                    b = Math.round(b + (250 - b) * eq);
+                // ── Contour lines at critical potential levels ──
+                // Draw contours at L1 potential (Roche lobe boundary)
+                const phiRelL1 = Math.abs(phi - phiL1) / Math.abs(phiL1);
+                if (phiRelL1 < CONTOUR_THICKNESS) {
+                    const contourGlow = 1.0 - phiRelL1 / CONTOUR_THICKNESS;
+                    const cg = contourGlow * contourGlow;
+                    r = Math.round(r + (255 - r) * cg * 0.8);
+                    g = Math.round(g + (255 - g) * cg * 0.9);
+                    b = Math.round(b + (255 - b) * cg * 0.8);
                 }
 
-                // Apply intensity as alpha, boosted with sqrt for visibility
-                const alpha = Math.pow(intensity, 0.65) * 0.88;
+                // ── Equilibrium boundary glow (sphere of influence) ──
+                const eqDist = Math.abs(ratio - 0.5);
+                if (eqDist < 0.06) {
+                    const eqGlow = (1.0 - eqDist / 0.06);
+                    const eq = eqGlow * eqGlow * 0.5;
+                    r = Math.round(r + (220 - r) * eq);
+                    g = Math.round(g + (245 - g) * eq);
+                    b = Math.round(b + (230 - b) * eq);
+                }
 
-                pixels[idx]     = r;
-                pixels[idx + 1] = g;
-                pixels[idx + 2] = b;
-                pixels[idx + 3] = Math.round(alpha * 255);
+                // ── Brightness from potential level ──
+                // Higher potential (less negative, closer to L-points) = brighter
+                const brightness = Math.pow(normPhi, 0.5) * 0.92;
+
+                pixels[idx]     = Math.round(r * brightness);
+                pixels[idx + 1] = Math.round(g * brightness);
+                pixels[idx + 2] = Math.round(b * brightness);
+                pixels[idx + 3] = Math.round(brightness * 240);
             }
         }
 
@@ -388,54 +410,75 @@
 
         // Draw onto main canvas
         ctx.save();
-        ctx.globalAlpha = 0.9;
+        ctx.globalAlpha = 0.92;
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(fieldCanvas, 0, 0, fw, fh, 0, 0, state.width, state.height);
         ctx.restore();
 
-        // ── Mark L1 Lagrange point ──
-        // L1 is between Earth and Moon where gravitational pulls balance
-        // Approximate: r_L1 from Moon ≈ emDist * (GM_Moon / (3*GM_Earth))^(1/3)
+        // ── Compute and draw all 5 Lagrange points ──
         if (emDist > 10000) {
-            const r_L1_moon = emDist * Math.pow(GM_MOON / (3 * GM_EARTH), 1/3);
-            const r_L1_earth = emDist - r_L1_moon;
-            // L1 position in km (along Earth→Moon line)
-            const dirX = moonPosKm.x / emDist;
-            const dirY = moonPosKm.y / emDist;
-            const l1X = dirX * r_L1_earth;
-            const l1Y = dirY * r_L1_earth;
-            const l1Screen = kmToScreen(l1X, l1Y);
+            const dirX = mx / emDist;
+            const dirY = my / emDist;
+            const perpX = -dirY; // perpendicular (90° CCW)
+            const perpY = dirX;
+            const hillR = emDist * Math.pow(mu / 3, 1.0/3.0);
 
-            // Draw L1 marker
-            ctx.beginPath();
-            ctx.arc(l1Screen.x, l1Screen.y, 4 * state.dpr, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(240, 255, 250, 0.9)';
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(l1Screen.x, l1Screen.y, 8 * state.dpr, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(240, 255, 250, 0.4)';
-            ctx.lineWidth = 1 * state.dpr;
-            ctx.stroke();
-            ctx.font = `bold ${10 * state.dpr}px 'Inter', sans-serif`;
-            ctx.fillStyle = 'rgba(240, 255, 250, 0.85)';
-            ctx.textAlign = 'center';
-            ctx.fillText('L1', l1Screen.x, l1Screen.y - 12 * state.dpr);
+            // L1: between Earth and Moon
+            const l1Dist = emDist - hillR;
+            const l1 = { x: dirX * l1Dist, y: dirY * l1Dist };
 
-            // Also mark L2 (behind Moon)
-            const r_L2_moon = emDist * Math.pow(GM_MOON / (3 * GM_EARTH), 1/3);
-            const l2X = moonPosKm.x + dirX * r_L2_moon;
-            const l2Y = moonPosKm.y + dirY * r_L2_moon;
-            const l2Screen = kmToScreen(l2X, l2Y);
+            // L2: behind Moon (away from Earth)
+            const l2 = { x: mx + dirX * hillR, y: my + dirY * hillR };
 
-            ctx.beginPath();
-            ctx.arc(l2Screen.x, l2Screen.y, 3 * state.dpr, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(240, 255, 250, 0.7)';
-            ctx.fill();
-            ctx.font = `bold ${9 * state.dpr}px 'Inter', sans-serif`;
-            ctx.fillStyle = 'rgba(240, 255, 250, 0.6)';
-            ctx.textAlign = 'center';
-            ctx.fillText('L2', l2Screen.x, l2Screen.y - 10 * state.dpr);
+            // L3: opposite side of Earth from Moon
+            // Approximate: distance ≈ emDist * (1 + 5μ/12) from barycenter, opposite side
+            const l3Dist = emDist * (1.0 + (5.0 * mu) / 12.0);
+            const l3 = { x: -dirX * l3Dist * (1 - mu), y: -dirY * l3Dist * (1 - mu) };
+
+            // L4: leading equilateral point (60° ahead of Moon)
+            const cos60 = 0.5, sin60 = 0.8660254;
+            const l4 = {
+                x: mx * cos60 - my * sin60,
+                y: mx * sin60 + my * cos60
+            };
+
+            // L5: trailing equilateral point (60° behind Moon)
+            const l5 = {
+                x: mx * cos60 + my * sin60,
+                y: -mx * sin60 + my * cos60
+            };
+
+            const lagrangePoints = [
+                { pos: l1, label: 'L1', size: 4, alpha: 0.95 },
+                { pos: l2, label: 'L2', size: 3.5, alpha: 0.85 },
+                { pos: l3, label: 'L3', size: 3, alpha: 0.75 },
+                { pos: l4, label: 'L4', size: 3, alpha: 0.75 },
+                { pos: l5, label: 'L5', size: 3, alpha: 0.75 },
+            ];
+
+            for (const lp of lagrangePoints) {
+                const sp = kmToScreen(lp.pos.x, lp.pos.y);
+
+                // Outer ring
+                ctx.beginPath();
+                ctx.arc(sp.x, sp.y, (lp.size + 5) * state.dpr, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(240, 255, 250, ${lp.alpha * 0.3})`;
+                ctx.lineWidth = 1 * state.dpr;
+                ctx.stroke();
+
+                // Inner dot
+                ctx.beginPath();
+                ctx.arc(sp.x, sp.y, lp.size * state.dpr, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(240, 255, 250, ${lp.alpha})`;
+                ctx.fill();
+
+                // Label
+                ctx.font = `bold ${10 * state.dpr}px 'Inter', sans-serif`;
+                ctx.fillStyle = `rgba(240, 255, 250, ${lp.alpha * 0.9})`;
+                ctx.textAlign = 'center';
+                ctx.fillText(lp.label, sp.x, sp.y - (lp.size + 8) * state.dpr);
+            }
         }
     }
 
@@ -653,7 +696,7 @@
         ctx.font = `bold ${11 * state.dpr}px 'Inter', sans-serif`;
         ctx.fillStyle = '#4a9eff';
         ctx.textAlign = 'center';
-        ctx.fillText('🌍 Tierra', earthScreen.x, earthScreen.y + earthR + 16 * state.dpr);
+        ctx.fillText('Tierra', earthScreen.x, earthScreen.y + earthR + 16 * state.dpr);
 
         // ── Draw Moon ──
         const moonPos = interpolateTrajectory(MOON_TRAJECTORY, currentJD);
@@ -689,7 +732,7 @@
         ctx.font = `bold ${11 * state.dpr}px 'Inter', sans-serif`;
         ctx.fillStyle = '#b0b0b0';
         ctx.textAlign = 'center';
-        ctx.fillText('🌙 Luna', moonScreen.x, moonScreen.y + moonR + 16 * state.dpr);
+        ctx.fillText('Luna', moonScreen.x, moonScreen.y + moonR + 16 * state.dpr);
 
         // ── Draw Orion spacecraft (current position) ──
         const orionPos = interpolateTrajectory(ORION_TRAJECTORY, currentJD);
