@@ -24,6 +24,8 @@
     const btnZoomOut = document.getElementById('btnZoomOut');
     const btnReset = document.getElementById('btnReset');
     const liveIndicator = document.getElementById('liveIndicator');
+    const chkGravity = document.getElementById('chkGravity');
+    const chkGravField = document.getElementById('chkGravField');
 
     // ── Constants ──
     const EARTH_RADIUS_KM = 6371;
@@ -32,6 +34,20 @@
     const DATA_START_JD = ORION_TRAJECTORY[0][0];
     const DATA_END_JD = ORION_TRAJECTORY[ORION_TRAJECTORY.length - 1][0];
     const MISSION_DURATION_DAYS = DATA_END_JD - LAUNCH_JD;
+
+    // Gravitational parameters (km³/s²)
+    const GM_EARTH = 398600.4418;
+    const GM_MOON = 4902.8;
+    // Reference acceleration for normalization: surface gravity of Earth
+    const G_SURFACE_EARTH = GM_EARTH / (EARTH_RADIUS_KM * EARTH_RADIUS_KM);
+
+    // Off-screen canvases for gravity visualizations
+    const GRAV_DOWNSCALE = 5;
+    const gravCanvas = document.createElement('canvas');
+    const gravCtx = gravCanvas.getContext('2d');
+    const FIELD_DOWNSCALE = 4;
+    const fieldCanvas = document.createElement('canvas');
+    const fieldCtx = fieldCanvas.getContext('2d');
 
     // ── State ──
     let state = {
@@ -160,6 +176,269 @@
         return { name: "Reentrada", color: "#f87171" };
     }
 
+    // ── Gravity field rendering (pixel-based) ──
+    function drawGravityField(earthScreenPos, moonScreenPos, scale) {
+        const gw = Math.ceil(state.width / GRAV_DOWNSCALE);
+        const gh = Math.ceil(state.height / GRAV_DOWNSCALE);
+        gravCanvas.width = gw;
+        gravCanvas.height = gh;
+
+        const imgData = gravCtx.createImageData(gw, gh);
+        const pixels = imgData.data;
+
+        // Pre-compute screen positions in downscaled coords
+        const exS = earthScreenPos.x / GRAV_DOWNSCALE;
+        const eyS = earthScreenPos.y / GRAV_DOWNSCALE;
+        const mxS = moonScreenPos.x / GRAV_DOWNSCALE;
+        const myS = moonScreenPos.y / GRAV_DOWNSCALE;
+
+        // km per pixel at this downscale
+        const kmPerPx = GRAV_DOWNSCALE / scale;
+
+        // Minimum radius in pixels to avoid division by zero (surface)
+        const earthMinPx = EARTH_RADIUS_KM / kmPerPx;
+        const moonMinPx = MOON_RADIUS_KM / kmPerPx;
+
+        // Gamma compression exponent: makes 1/r² visible at distance
+        // raw = (R/r)², visual = raw^gamma where gamma < 1 compresses range
+        const GAMMA = 0.35;
+        // Max opacity at surface
+        const MAX_ALPHA_EARTH = 0.70;
+        const MAX_ALPHA_MOON = 0.55;
+        // Cutoff: stop rendering below this visual intensity
+        const CUTOFF = 0.008;
+
+        for (let py = 0; py < gh; py++) {
+            for (let px = 0; px < gw; px++) {
+                const idx = (py * gw + px) * 4;
+
+                // Distance to Earth center in pixels
+                const dxE = px - exS;
+                const dyE = py - eyS;
+                const distEpx = Math.sqrt(dxE * dxE + dyE * dyE);
+
+                // Distance to Moon center in pixels
+                const dxM = px - mxS;
+                const dyM = py - myS;
+                const distMpx = Math.sqrt(dxM * dxM + dyM * dyM);
+
+                // Earth gravity contribution
+                let earthIntensity = 0;
+                if (distEpx > earthMinPx * 0.8) {
+                    const rKm = Math.max(distEpx * kmPerPx, EARTH_RADIUS_KM);
+                    const rawG = GM_EARTH / (rKm * rKm);
+                    const normalized = rawG / G_SURFACE_EARTH; // 1.0 at surface
+                    earthIntensity = Math.pow(normalized, GAMMA) * MAX_ALPHA_EARTH;
+                }
+
+                // Moon gravity contribution
+                let moonIntensity = 0;
+                if (distMpx > moonMinPx * 0.8) {
+                    const rKm = Math.max(distMpx * kmPerPx, MOON_RADIUS_KM);
+                    const rawG = GM_MOON / (rKm * rKm);
+                    const normalizedMoon = rawG / G_SURFACE_EARTH; // normalized to Earth surface
+                    moonIntensity = Math.pow(normalizedMoon, GAMMA) * MAX_ALPHA_MOON;
+                }
+
+                // Skip if both negligible
+                if (earthIntensity < CUTOFF && moonIntensity < CUTOFF) continue;
+
+                // Earth color: blue (50, 120, 255)
+                // Moon color: amber (255, 190, 80)
+                const eR = 50, eG = 120, eB = 255;
+                const mR = 255, mG = 190, mB = 80;
+
+                // Combine: additive blend
+                const r = Math.min(255, eR * earthIntensity + mR * moonIntensity);
+                const g = Math.min(255, eG * earthIntensity + mG * moonIntensity);
+                const b = Math.min(255, eB * earthIntensity + mB * moonIntensity);
+                const a = Math.min(255, (earthIntensity + moonIntensity) * 255);
+
+                pixels[idx]     = r;
+                pixels[idx + 1] = g;
+                pixels[idx + 2] = b;
+                pixels[idx + 3] = a;
+            }
+        }
+
+        gravCtx.putImageData(imgData, 0, 0);
+
+        // Draw the gravity field onto main canvas, scaled up
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(gravCanvas, 0, 0, gw, gh, 0, 0, state.width, state.height);
+        ctx.restore();
+    }
+
+    // ── Gravity field HEATMAP rendering ──
+    function drawGravityFieldMap(earthScreenPos, moonScreenPos, moonPosKm, scale) {
+        const ds = FIELD_DOWNSCALE;
+        const fw = Math.ceil(state.width / ds);
+        const fh = Math.ceil(state.height / ds);
+        fieldCanvas.width = fw;
+        fieldCanvas.height = fh;
+
+        const imgData = fieldCtx.createImageData(fw, fh);
+        const pixels = imgData.data;
+
+        // Screen positions in downscaled coords
+        const exS = earthScreenPos.x / ds;
+        const eyS = earthScreenPos.y / ds;
+        const mxS = moonScreenPos.x / ds;
+        const myS = moonScreenPos.y / ds;
+
+        const kmPerPx = ds / scale;
+
+        // Compute Earth-Moon distance for L1 calculation
+        const emDist = Math.sqrt(moonPosKm.x * moonPosKm.x + moonPosKm.y * moonPosKm.y + moonPosKm.z * moonPosKm.z);
+
+        // Log scale bounds — tuned to show the full interesting range
+        // At Earth surface: g ≈ 0.00982 km/s², log10 ≈ -2.008
+        // At Moon orbit distance from Earth: g ≈ 2.7e-6, log10 ≈ -5.57
+        // At deep space (far from both): g ≈ 1e-8, log10 ≈ -8
+        const LOG_MIN = -7.5;  // deep space
+        const LOG_MAX = -2.0;  // near surface
+        const LOG_RANGE = LOG_MAX - LOG_MIN;
+
+        // Equilibrium contour detection threshold
+        const CONTOUR_WIDTH = 0.08; // how close ratio must be to 0.5 to glow
+
+        // Color palette:
+        // Earth-dominated: blue shades
+        // Moon-dominated: amber/orange shades  
+        // Equilibrium: bright cyan/white
+
+        for (let py = 0; py < fh; py++) {
+            for (let px = 0; px < fw; px++) {
+                const idx = (py * fw + px) * 4;
+
+                // Distance to Earth in km
+                const dxE = (px - exS) * kmPerPx;
+                const dyE = (py - eyS) * kmPerPx;
+                const rEarth = Math.sqrt(dxE * dxE + dyE * dyE);
+
+                // Distance to Moon in km
+                const dxM = (px - mxS) * kmPerPx;
+                const dyM = (py - myS) * kmPerPx;
+                const rMoon = Math.sqrt(dxM * dxM + dyM * dyM);
+
+                // Skip pixels inside bodies
+                if (rEarth < EARTH_RADIUS_KM * 0.8 || rMoon < MOON_RADIUS_KM * 0.8) continue;
+
+                // Gravitational acceleration magnitudes
+                const rE = Math.max(rEarth, EARTH_RADIUS_KM);
+                const rM = Math.max(rMoon, MOON_RADIUS_KM);
+                const gEarth = GM_EARTH / (rE * rE);
+                const gMoon = GM_MOON / (rM * rM);
+                const gTotal = gEarth + gMoon;
+
+                // Log-normalized intensity (0 to 1)
+                const logG = Math.log10(gTotal);
+                let intensity = (logG - LOG_MIN) / LOG_RANGE;
+                intensity = Math.max(0, Math.min(1, intensity));
+
+                if (intensity < 0.01) continue;
+
+                // Dominance ratio: 1 = Earth, 0 = Moon
+                const ratio = gEarth / gTotal;
+
+                // Distance from equilibrium (0 at perfect balance)
+                const eqDist = Math.abs(ratio - 0.5);
+
+                // Equilibrium highlight — bright where forces balance
+                const eqGlow = Math.max(0, 1.0 - eqDist / CONTOUR_WIDTH);
+
+                // Base colors by dominance
+                let r, g, b;
+                if (ratio > 0.5) {
+                    // Earth-dominated: blue
+                    const t = (ratio - 0.5) * 2; // 0 at boundary, 1 at full Earth
+                    r = Math.round(30 + 20 * (1 - t));
+                    g = Math.round(80 + 60 * (1 - t));
+                    b = Math.round(180 + 75 * t);
+                } else {
+                    // Moon-dominated: amber/orange
+                    const t = (0.5 - ratio) * 2; // 0 at boundary, 1 at full Moon
+                    r = Math.round(200 + 55 * t);
+                    g = Math.round(150 + 40 * (1 - t));
+                    b = Math.round(50 - 30 * t);
+                }
+
+                // Blend in equilibrium glow (bright cyan-white)
+                if (eqGlow > 0) {
+                    const eq = eqGlow * eqGlow; // sharpen the glow
+                    r = Math.round(r + (240 - r) * eq);
+                    g = Math.round(g + (255 - g) * eq);
+                    b = Math.round(b + (250 - b) * eq);
+                }
+
+                // Apply intensity as alpha, boosted with sqrt for visibility
+                const alpha = Math.pow(intensity, 0.65) * 0.88;
+
+                pixels[idx]     = r;
+                pixels[idx + 1] = g;
+                pixels[idx + 2] = b;
+                pixels[idx + 3] = Math.round(alpha * 255);
+            }
+        }
+
+        fieldCtx.putImageData(imgData, 0, 0);
+
+        // Draw onto main canvas
+        ctx.save();
+        ctx.globalAlpha = 0.9;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(fieldCanvas, 0, 0, fw, fh, 0, 0, state.width, state.height);
+        ctx.restore();
+
+        // ── Mark L1 Lagrange point ──
+        // L1 is between Earth and Moon where gravitational pulls balance
+        // Approximate: r_L1 from Moon ≈ emDist * (GM_Moon / (3*GM_Earth))^(1/3)
+        if (emDist > 10000) {
+            const r_L1_moon = emDist * Math.pow(GM_MOON / (3 * GM_EARTH), 1/3);
+            const r_L1_earth = emDist - r_L1_moon;
+            // L1 position in km (along Earth→Moon line)
+            const dirX = moonPosKm.x / emDist;
+            const dirY = moonPosKm.y / emDist;
+            const l1X = dirX * r_L1_earth;
+            const l1Y = dirY * r_L1_earth;
+            const l1Screen = kmToScreen(l1X, l1Y);
+
+            // Draw L1 marker
+            ctx.beginPath();
+            ctx.arc(l1Screen.x, l1Screen.y, 4 * state.dpr, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(240, 255, 250, 0.9)';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(l1Screen.x, l1Screen.y, 8 * state.dpr, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(240, 255, 250, 0.4)';
+            ctx.lineWidth = 1 * state.dpr;
+            ctx.stroke();
+            ctx.font = `bold ${10 * state.dpr}px 'Inter', sans-serif`;
+            ctx.fillStyle = 'rgba(240, 255, 250, 0.85)';
+            ctx.textAlign = 'center';
+            ctx.fillText('L1', l1Screen.x, l1Screen.y - 12 * state.dpr);
+
+            // Also mark L2 (behind Moon)
+            const r_L2_moon = emDist * Math.pow(GM_MOON / (3 * GM_EARTH), 1/3);
+            const l2X = moonPosKm.x + dirX * r_L2_moon;
+            const l2Y = moonPosKm.y + dirY * r_L2_moon;
+            const l2Screen = kmToScreen(l2X, l2Y);
+
+            ctx.beginPath();
+            ctx.arc(l2Screen.x, l2Screen.y, 3 * state.dpr, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(240, 255, 250, 0.7)';
+            ctx.fill();
+            ctx.font = `bold ${9 * state.dpr}px 'Inter', sans-serif`;
+            ctx.fillStyle = 'rgba(240, 255, 250, 0.6)';
+            ctx.textAlign = 'center';
+            ctx.fillText('L2', l2Screen.x, l2Screen.y - 10 * state.dpr);
+        }
+    }
+
     // ── Resize handler ──
     function resize() {
         const rect = canvas.parentElement.getBoundingClientRect();
@@ -198,12 +477,15 @@
 
         // Stars
         const time = Date.now() * 0.001;
-        for (const star of state.stars) {
-            const twinkle = 0.5 + 0.5 * Math.sin(time * star.twinkleSpeed * 1000 + star.twinklePhase);
-            ctx.beginPath();
-            ctx.arc(star.x * w, star.y * h, star.r * state.dpr, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(200, 210, 230, ${star.a * twinkle})`;
-            ctx.fill();
+        if (!(chkGravField && chkGravField.checked)) {
+            // Only draw stars when gravity field map is off (it covers them anyway)
+            for (const star of state.stars) {
+                const twinkle = 0.5 + 0.5 * Math.sin(time * star.twinkleSpeed * 1000 + star.twinklePhase);
+                ctx.beginPath();
+                ctx.arc(star.x * w, star.y * h, star.r * state.dpr, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(200, 210, 230, ${star.a * twinkle})`;
+                ctx.fill();
+            }
         }
 
         // Determine current JD
@@ -212,8 +494,22 @@
         // Current index in trajectory
         const currentIdx = findCurrentTrajectoryIndex(ORION_TRAJECTORY, currentJD);
 
-        // ── Draw grid circles (distance rings) ──
+        // ── Pre-compute positions ──
         const earthScreen = kmToScreen(0, 0);
+        const moonPosGrav = interpolateTrajectory(MOON_TRAJECTORY, currentJD);
+        const moonScreenGrav = kmToScreen(moonPosGrav.x, moonPosGrav.y);
+
+        // ── Draw gravity field heatmap (behind everything) ──
+        if (chkGravField && chkGravField.checked) {
+            drawGravityFieldMap(earthScreen, moonScreenGrav, moonPosGrav, scale);
+        }
+
+        // ── Draw gravity influence glow ──
+        if (chkGravity && chkGravity.checked) {
+            drawGravityField(earthScreen, moonScreenGrav, scale);
+        }
+
+        // ── Draw grid circles (distance rings) ──
         const ringDistances = [50000, 100000, 200000, 300000, 400000];
         ctx.setLineDash([4 * state.dpr, 6 * state.dpr]);
         for (const dist of ringDistances) {
