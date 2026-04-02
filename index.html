@@ -3,61 +3,119 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Misión Artemis II - Seguimiento en Tiempo Real</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Space+Grotesk:wght@400;700&display=swap" rel="stylesheet">
+    <title>Artemis II — Seguimiento en Tiempo Real</title>
+    <meta name="description" content="Visualización a escala real de la trayectoria de la misión Artemis II alrededor de la Luna, con datos de telemetría del JPL Horizons de la NASA.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div id="app">
-        <!-- Canvas para el mapa estelar y trayectoria -->
-        <canvas id="spaceMap"></canvas>
-
-        <!-- Panel de Telemetría (Glassmorphism) -->
-        <div class="telemetry-panel">
-            <div class="panel-header">
-                <div class="live-indicator">
-                    <span class="pulsing-dot"></span>
-                    TELEMETRÍA EN DIRECTO
-                </div>
-                <h1>ARTEMIS II</h1>
-                <p class="mission-status">Misión en curso - T+ <span id="met">18:23:55</span></p>
-            </div>
-
-            <div class="data-grid">
-                <div class="data-card">
-                    <span class="data-label">VELOCIDAD APROX.</span>
-                    <span class="data-value" id="vel">0 <span class="unit">km/h</span></span>
-                </div>
-                <div class="data-card">
-                    <span class="data-label">DISTANCIA A LA TIERRA</span>
-                    <span class="data-value" id="dist-earth">0 <span class="unit">km</span></span>
-                </div>
-                <div class="data-card">
-                    <span class="data-label">DISTANCIA A LA LUNA</span>
-                    <span class="data-value" id="dist-moon">0 <span class="unit">km</span></span>
-                </div>
-                <div class="data-card">
-                    <span class="data-label">PROGRESO DEL VIAJE</span>
-                    <div class="progress-bar-container">
-                        <div class="progress-bar" id="progress-bar"></div>
-                    </div>
-                    <div class="progress-stats">
-                        <span id="progress-text">0%</span>
-                        <span>10 DÍAS</span>
+        <!-- Header -->
+        <header id="header">
+            <div class="header-left">
+                <div class="mission-badge">
+                    <span class="badge-icon">◈</span>
+                    <div>
+                        <h1>ARTEMIS II</h1>
+                        <p class="subtitle">Misión tripulada lunar — Seguimiento en tiempo real</p>
                     </div>
                 </div>
             </div>
-
-            <div class="info-footer">
-                <p>Simulador de Telemetría. Sistema escalado 1:1.</p>
-                <div class="controls">
-                    <button id="btn-zoom-in">+</button>
-                    <button id="btn-zoom-out">-</button>
-                    <button id="btn-reset">Explorar a Escala Real</button>
+            <div class="header-right">
+                <div class="live-indicator" id="liveIndicator">
+                    <span class="live-dot"></span>
+                    <span>EN VIVO</span>
+                </div>
+                <div class="data-source">
+                    Datos: NASA/JPL Horizons
                 </div>
             </div>
-        </div>
+        </header>
+
+        <!-- Main visualization -->
+        <main id="main">
+            <canvas id="trajectoryCanvas"></canvas>
+            
+            <!-- Info overlay -->
+            <div id="infoPanel" class="info-panel">
+                <div class="info-row">
+                    <div class="info-card" id="cardMET">
+                        <span class="info-label">Tiempo de misión (MET)</span>
+                        <span class="info-value" id="metValue">--:--:--</span>
+                    </div>
+                    <div class="info-card" id="cardPhase">
+                        <span class="info-label">Fase actual</span>
+                        <span class="info-value phase-value" id="phaseValue">—</span>
+                    </div>
+                    <div class="info-card" id="cardDistEarth">
+                        <span class="info-label">Distancia a la Tierra</span>
+                        <span class="info-value" id="distEarthValue">— km</span>
+                    </div>
+                    <div class="info-card" id="cardDistMoon">
+                        <span class="info-label">Distancia a la Luna</span>
+                        <span class="info-value" id="distMoonValue">— km</span>
+                    </div>
+                    <div class="info-card" id="cardProgress">
+                        <span class="info-label">Progreso de la misión</span>
+                        <span class="info-value" id="progressValue">—%</span>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Controls -->
+            <div id="controls" class="controls">
+                <button id="btnZoomIn" class="ctrl-btn" title="Acercar">+</button>
+                <button id="btnZoomOut" class="ctrl-btn" title="Alejar">−</button>
+                <button id="btnReset" class="ctrl-btn" title="Centrar">⌂</button>
+                <div class="ctrl-separator"></div>
+                <button id="btnToggle2D3D" class="ctrl-btn text-btn" title="Alternar vista">2D</button>
+            </div>
+
+            <!-- Scale indicator -->
+            <div id="scaleIndicator" class="scale-indicator">
+                <div class="scale-bar"></div>
+                <span id="scaleLabel">— km</span>
+            </div>
+            
+            <!-- Legend -->
+            <div id="legend" class="legend">
+                <div class="legend-item">
+                    <span class="legend-line future"></span>
+                    <span>Trayectoria prevista</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-line completed"></span>
+                    <span>Trayectoria recorrida</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-dot orion"></span>
+                    <span>Orion (posición actual)</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-dot moon-legend"></span>
+                    <span>Luna</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-dot earth-legend"></span>
+                    <span>Tierra</span>
+                </div>
+            </div>
+
+            <!-- Time slider -->
+            <div id="timeControl" class="time-control">
+                <label for="timeSlider" class="time-label">Explorar cronología:</label>
+                <input type="range" id="timeSlider" min="0" max="1000" value="0" step="1">
+                <span id="timeDisplay" class="time-display">—</span>
+                <button id="btnLive" class="btn-live" title="Volver al tiempo real">⟳ EN VIVO</button>
+            </div>
+        </main>
     </div>
+
+    <script src="trajectory_data.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
