@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Artemis II - Trayectoria en Tiempo Real</title>
+    <style>
+        body { background: #050505; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
+        canvas { border: 1px solid #333; background: black; cursor: crosshair; }
+        .info { margin: 10px; padding: 15px; background: #111; border-radius: 8px; border-left: 5px solid #0056b3; }
+        b { color: #4dabff; }
+    </style>
+</head>
+<body>
+    <h2>Misión Artemis II: Estado Actual</h2>
+    <div class="info">
+        Lanzamiento: <b>1 de Abril, 2026</b> | Duración: <b>10 días</b><br>
+        Fase actual: <b>Pruebas en órbita alta y preparación para TLI</b>
+    </div>
+    <canvas id="artemisCanvas" width="900" height="500"></canvas>
+
+    <script>
+        const canvas = document.getElementById('artemisCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Escalas reales (en km)
+        const DISTANCIA_TIERRA_LUNA = 384400;
+        const RADIO_TIERRA = 6371;
+        const RADIO_LUNA = 1737;
+        
+        // Configuración de vista (píxeles)
+        const offsetX = 150;
+        const offsetY = 250;
+        const escala = 1.8; // px por cada 1000km aprox
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 1. Dibujar Tierra
+            ctx.beginPath();
+            ctx.arc(offsetX, offsetY, RADIO_TIERRA / 500, 0, Math.PI * 2);
+            ctx.fillStyle = "#1a73e8";
+            ctx.fill();
+            ctx.fillStyle = "white";
+            ctx.fillText("TIERRA", offsetX - 20, offsetY + 25);
+
+            // 2. Dibujar Luna
+            const lunaX = offsetX + (DISTANCIA_TIERRA_LUNA / 1000) * escala;
+            ctx.beginPath();
+            ctx.arc(lunaX, offsetY, RADIO_LUNA / 500, 0, Math.PI * 2);
+            ctx.fillStyle = "#888";
+            ctx.fill();
+            ctx.fillText("LUNA", lunaX - 15, offsetY + 25);
+
+            // 3. Generar Trayectoria Teórica (Figura en 8)
+            const puntos = [];
+            for (let t = 0; t <= 1; t += 0.01) {
+                // Curva simplificada de retorno libre
+                let x = offsetX + (t * (lunaX - offsetX + 40));
+                let y = offsetY + Math.sin(t * Math.PI) * (t < 0.5 ? -60 : 40);
+                if (t > 0.8) y = offsetY + Math.sin(t * Math.PI) * 100; // Curva de retorno
+                puntos.push({x, y});
+            }
+
+            // 2.2 Dibujar trayectoria completa
+            ctx.beginPath();
+            ctx.setLineDash([5, 5]);
+            ctx.strokeStyle = "#444";
+            ctx.lineWidth = 1;
+            ctx.moveTo(puntos[0].x, puntos[0].y);
+            for(let p of puntos) ctx.lineTo(p.x, p.y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 2.3 Trayectoria recorrida (Simulación 24h de viaje = ~10% del camino)
+            const progresoActual = 0.08; 
+            ctx.beginPath();
+            ctx.strokeStyle = "#00ff00";
+            ctx.lineWidth = 3;
+            ctx.moveTo(puntos[0].x, puntos[0].y);
+            const numPuntosRecorridos = Math.floor(puntos.length * progresoActual);
+            for(let i=0; i <= numPuntosRecorridos; i++) {
+                ctx.lineTo(puntos[i].x, puntos[i].y);
+            }
+            ctx.stroke();
+
+            // 2.4 Punto actual de la cápsula
+            const actual = puntos[numPuntosRecorridos];
+            ctx.beginPath();
+            ctx.arc(actual.x, actual.y, 5, 0, Math.PI * 2);
+            ctx.fillStyle = "#ff3333";
+            ctx.fill();
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = "red";
+            ctx.fillText("ORION (T+22h)", actual.x + 10, actual.y - 10);
+        }
+
+        draw();
+    </script>
+</body>
+</html>

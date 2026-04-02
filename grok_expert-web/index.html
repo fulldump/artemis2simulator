@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Artemis II - Trayectoria a Escala Real (Live)</title>
+  <style>
+    body { margin:0; background:#000; color:#0ff; font-family:Arial, sans-serif; text-align:center; }
+    canvas { border:2px solid #0ff; margin:20px auto; display:block; background:#111; }
+    h1 { margin:10px; }
+    .info { position:absolute; top:20px; left:20px; background:rgba(0,0,0,0.7); padding:10px; border-radius:8px; }
+  </style>
+</head>
+<body>
+  <h1>🚀 Artemis II – Visualización a Escala Real (10 días de misión)</h1>
+  <div class="info">
+    <strong>Tiempo transcurrido:</strong> <span id="time">0 días 0 h</span><br>
+    <strong>Posición actual:</strong> <span id="pos">—</span>
+  </div>
+  <canvas id="canvas" width="1000" height="650"></canvas>
+  <input type="range" id="slider" min="0" max="100" value="5" style="width:80%;margin:10px;">
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const slider = document.getElementById('slider');
+    let progress = 5; // % de la misión (0-100)
+
+    // Fechas reales de la misión
+    const launchDate = new Date('2026-04-01T22:35:00Z');
+
+    // Escala real (1 px ≈ 800 km)
+    const SCALE = 800; // km por píxel
+    const EARTH_X = 220;
+    const EARTH_Y = 325;
+    const MOON_X = 780;
+    const MOON_Y = 325;
+    const EARTH_RADIUS_KM = 6371;
+    const MOON_RADIUS_KM = 1737;
+    const EARTH_MOON_DIST_KM = 384400;
+
+    // Trayectoria completa (puntos en km relativos a Tierra; aproximación realista free-return)
+    let trajectory = [];
+    function generateTrajectory() {
+      trajectory = [];
+      // Fase 1: órbitas terrestres iniciales (primeras ~24 h)
+      for (let i = 0; i < 120; i++) {
+        const angle = i * 0.12;
+        const r = 8000 + Math.sin(i * 0.3) * 2000; // ~8000 km altitud media
+        trajectory.push({
+          x: EARTH_X + (r / SCALE) * Math.cos(angle),
+          y: EARTH_Y + (r / SCALE) * Math.sin(angle)
+        });
+      }
+      // Fase 2: inyección translunar + viaje a la Luna (~3 días)
+      for (let i = 0; i < 180; i++) {
+        const t = i / 180;
+        const x = EARTH_X + (t * 520);
+        const y = EARTH_Y + Math.sin(t * Math.PI) * 80;
+        trajectory.push({ x, y });
+      }
+      // Fase 3: flyby lunar (giro alrededor de la Luna)
+      for (let i = 0; i < 100; i++) {
+        const angle = Math.PI * 1.2 + (i / 100) * Math.PI * 1.8;
+        const r = 60000 / SCALE;
+        trajectory.push({
+          x: MOON_X + r * Math.cos(angle),
+          y: MOON_Y + r * Math.sin(angle) * 0.6
+        });
+      }
+      // Fase 4: regreso a Tierra (~4-5 días)
+      for (let i = 0; i < 200; i++) {
+        const t = i / 200;
+        const x = MOON_X - (t * 520);
+        const y = MOON_Y - Math.sin(t * Math.PI) * 120;
+        trajectory.push({ x, y });
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Fondo estrellas
+      ctx.fillStyle = '#222';
+      for (let i = 0; i < 300; i++) {
+        const x = Math.random() * canvas.width;
+        const y = Math.random() * canvas.height;
+        ctx.fillRect(x, y, 1, 1);
+      }
+
+      // Tierra (escala real)
+      ctx.fillStyle = '#00aaff';
+      ctx.beginPath();
+      ctx.arc(EARTH_X, EARTH_Y, EARTH_RADIUS_KM / SCALE * 4, 0, Math.PI * 2); // radio exagerado x4 para visibilidad
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.font = '14px Arial';
+      ctx.fillText('🌍 Tierra', EARTH_X - 30, EARTH_Y + 45);
+
+      // Luna (escala real)
+      ctx.fillStyle = '#ddd';
+      ctx.beginPath();
+      ctx.arc(MOON_X, MOON_Y, MOON_RADIUS_KM / SCALE * 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#aaa';
+      ctx.fillText('🌕 Luna', MOON_X - 25, MOON_Y + 35);
+
+      // Trayectoria completa (línea fina gris)
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(trajectory[0].x, trajectory[0].y);
+      for (let p of trajectory) ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+
+      // Calcular índice actual según slider o tiempo real
+      const now = new Date();
+      let missionProgress = (now - launchDate) / (10 * 24 * 60 * 60 * 1000); // 10 días total
+      missionProgress = Math.max(0, Math.min(1, missionProgress));
+      const currentIndex = Math.floor(missionProgress * (trajectory.length - 1));
+
+      // Recorrido actual (línea más gruesa y azul neón)
+      ctx.strokeStyle = '#00ffff';
+      ctx.lineWidth = 6;
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = '#00ffff';
+      ctx.beginPath();
+      ctx.moveTo(trajectory[0].x, trajectory[0].y);
+      for (let i = 0; i <= currentIndex; i++) {
+        ctx.lineTo(trajectory[i].x, trajectory[i].y);
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Punto actual (círculo rojo brillante)
+      const currentPoint = trajectory[Math.min(currentIndex, trajectory.length - 1)];
+      ctx.fillStyle = '#ff0000';
+      ctx.beginPath();
+      ctx.arc(currentPoint.x, currentPoint.y, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#ffff00';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Etiqueta "Orion actual"
+      ctx.fillStyle = '#ffff00';
+      ctx.font = 'bold 16px Arial';
+      ctx.fillText('🛰️ Orion actual', currentPoint.x + 15, currentPoint.y - 15);
+
+      // Distancia aproximada Tierra-Luna (solo visual)
+      ctx.fillStyle = '#0ff';
+      ctx.font = '12px Arial';
+      ctx.fillText('384 400 km (escala real)', 380, 50);
+
+      // Actualizar info
+      const days = Math.floor(missionProgress * 10);
+      const hours = Math.floor(((missionProgress * 10) % 1) * 24);
+      document.getElementById('time').textContent = `${days} días ${hours} h`;
+      document.getElementById('pos').textContent = `x:${currentPoint.x.toFixed(0)} y:${currentPoint.y.toFixed(0)} px`;
+    }
+
+    // Inicializar
+    generateTrajectory();
+    setInterval(() => {
+      progress = slider.value;
+      draw();
+    }, 100);
+
+    slider.addEventListener('input', () => draw());
+    window.onload = draw; // primer dibujo
+  </script>
+</body>
+</html>

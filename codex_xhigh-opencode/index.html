@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Artemis II - Trayectoria en tiempo real</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="info-panel">
+      <div>
+        <h1>Artemis II - Trayectoria Orion (escala real)</h1>
+        <p class="subtitle">
+          Fuente de telemetria: OEM (state vectors) publicada por NASA AROW.
+          Escala lineal unica para distancias y tamanos (sin distorsion).
+        </p>
+      </div>
+      <p id="status" class="status-pill">Iniciando...</p>
+    </header>
+
+    <section class="meta-panel">
+      <p><strong>Fuente ZIP:</strong> <a id="source-link" href="#" target="_blank" rel="noopener noreferrer">--</a></p>
+      <p><strong>Archivo telemetria:</strong> <span id="file-name">--</span></p>
+      <p><strong>Ultima actualizacion NASA:</strong> <span id="telemetry-updated">--</span></p>
+      <p><strong>Puntos de trayectoria:</strong> <span id="point-count">--</span></p>
+      <p><strong>UTC visualizada:</strong> <span id="utc-now">--</span></p>
+      <p><strong>Tiempo de mision:</strong> <span id="mission-elapsed">--</span></p>
+      <p><strong>Distancia Orion-Tierra:</strong> <span id="earth-distance">--</span></p>
+      <p><strong>Escala en canvas:</strong> <span id="scale-readout">--</span></p>
+    </section>
+
+    <section class="timeline-panel">
+      <div class="timeline-head">
+        <p><strong>Navegacion temporal:</strong> mueve la barra para recorrer la mision completa.</p>
+        <button id="live-button" type="button" disabled>Volver a tiempo real</button>
+      </div>
+      <input id="mission-slider" type="range" min="0" max="10000" value="0" step="1" disabled aria-label="Control temporal de la mision Artemis II">
+      <div class="timeline-labels">
+        <span id="timeline-start">Inicio: --</span>
+        <span id="timeline-current">Visualizado: --</span>
+        <span id="timeline-end">Fin: --</span>
+      </div>
+    </section>
+
+    <section class="legend-panel">
+      <span class="legend-item"><i class="swatch full"></i>Trayectoria completa prevista</span>
+      <span class="legend-item"><i class="swatch traveled"></i>Tramo recorrido hasta ahora</span>
+      <span class="legend-item"><i class="swatch marker"></i>Posicion actual Orion</span>
+      <span class="legend-item"><i class="swatch earth"></i>Tierra (radio real)</span>
+      <span class="legend-item"><i class="swatch moon"></i>Luna (radio real, orbita media)</span>
+    </section>
+
+    <section class="canvas-panel">
+      <canvas id="trajectory-canvas" aria-label="Visualizacion de la trayectoria de Artemis II"></canvas>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
