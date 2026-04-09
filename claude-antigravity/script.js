@@ -26,6 +26,14 @@
     const liveIndicator = document.getElementById('liveIndicator');
     const chkGravity = document.getElementById('chkGravity');
     const chkGravField = document.getElementById('chkGravField');
+    const btnPlay = document.getElementById('btnPlay');
+    // Mobile info elements
+    const metValueMobile = document.getElementById('metValueMobile');
+    const phaseValueMobile = document.getElementById('phaseValueMobile');
+    const distEarthValueMobile = document.getElementById('distEarthValueMobile');
+    const distMoonValueMobile = document.getElementById('distMoonValueMobile');
+    const progressValueMobile = document.getElementById('progressValueMobile');
+    const progressFillMobile = document.getElementById('progressFillMobile');
 
     // ── Constants ──
     const EARTH_RADIUS_KM = 6371;
@@ -72,6 +80,9 @@
         stars: [],
         // Animation
         animFrame: null,
+        // Playback
+        isPlaying: false,
+        playLastTimestamp: 0,
     };
 
     // ── Utility: JD ↔ Date ──
@@ -828,12 +839,49 @@
 
         // Time display
         timeDisplay.textContent = formatDateTime(jd);
+
+        // ── Mobile elements ──
+        if (metValueMobile) metValueMobile.textContent = formatMET(jd);
+        if (phaseValueMobile) {
+            phaseValueMobile.textContent = phase.name;
+            phaseValueMobile.style.color = phase.color;
+        }
+        if (distEarthValueMobile) {
+            const distEarthShort = distEarth >= 1000 
+                ? (distEarth / 1000).toFixed(1) + 'k' 
+                : Math.round(distEarth).toString();
+            distEarthValueMobile.textContent = distEarthShort + ' km';
+        }
+        if (distMoonValueMobile) {
+            const distMoonShort = distMoon >= 1000 
+                ? (distMoon / 1000).toFixed(1) + 'k' 
+                : Math.round(distMoon).toString();
+            distMoonValueMobile.textContent = distMoonShort + ' km';
+        }
+        if (progressValueMobile) progressValueMobile.textContent = progress.toFixed(1) + '%';
+        if (progressFillMobile) progressFillMobile.style.width = progress + '%';
     }
 
     // ── Animation loop ──
-    function animate() {
+    function animate(timestamp) {
         // Update viewJD
-        if (state.isLive) {
+        if (state.isPlaying) {
+            // Playback mode: advance time at ~2 seconds per mission day
+            if (state.playLastTimestamp > 0) {
+                const dtMs = timestamp - state.playLastTimestamp;
+                // 1 mission day = 2 real seconds → speed = 0.5 days/second
+                const daysPerMs = 0.5 / 1000;
+                state.viewJD += dtMs * daysPerMs;
+                if (state.viewJD >= DATA_END_JD) {
+                    state.viewJD = DATA_END_JD;
+                    stopPlayback();
+                }
+                // Update slider position
+                const t = (state.viewJD - DATA_START_JD) / (DATA_END_JD - DATA_START_JD);
+                timeSlider.value = Math.round(t * 1000);
+            }
+            state.playLastTimestamp = timestamp;
+        } else if (state.isLive) {
             state.viewJD = nowToJD();
             // Clamp to data range
             if (state.viewJD < DATA_START_JD) state.viewJD = DATA_START_JD;
@@ -845,6 +893,24 @@
 
         draw();
         state.animFrame = requestAnimationFrame(animate);
+    }
+
+    function stopPlayback() {
+        state.isPlaying = false;
+        state.playLastTimestamp = 0;
+        btnPlay.textContent = '▶';
+        btnPlay.classList.remove('playing');
+    }
+
+    function startPlayback() {
+        state.isPlaying = true;
+        state.isLive = false;
+        state.playLastTimestamp = 0;
+        btnPlay.textContent = '⏸';
+        btnPlay.classList.add('playing');
+        liveIndicator.classList.add('inactive');
+        liveIndicator.querySelector('span:last-child').textContent = 'REPRODUCCIÓN';
+        btnLive.classList.remove('active');
     }
 
     // ── Input handlers ──
@@ -892,6 +958,7 @@
 
     // Touch support
     let lastTouchDist = 0;
+    let lastTouchCenter = { x: 0, y: 0 };
     canvas.addEventListener('touchstart', (e) => {
         if (e.touches.length === 1) {
             state.isDragging = true;
@@ -900,10 +967,17 @@
             state.dragOffsetX = state.offsetX;
             state.dragOffsetY = state.offsetY;
         } else if (e.touches.length === 2) {
+            state.isDragging = false;
             lastTouchDist = Math.hypot(
                 e.touches[0].clientX - e.touches[1].clientX,
                 e.touches[0].clientY - e.touches[1].clientY
             );
+            // Store pinch midpoint in canvas coordinates
+            const rect = canvas.getBoundingClientRect();
+            lastTouchCenter = {
+                x: ((e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left) * state.dpr,
+                y: ((e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top) * state.dpr,
+            };
         }
         e.preventDefault();
     }, { passive: false });
@@ -920,8 +994,26 @@
                 e.touches[0].clientY - e.touches[1].clientY
             );
             const zoomFactor = dist / lastTouchDist;
+            
+            // Compute new pinch center
+            const rect = canvas.getBoundingClientRect();
+            const mx = ((e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left) * state.dpr;
+            const my = ((e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top) * state.dpr;
+            
+            // Current center of view
+            const cx = state.width / 2 + state.offsetX;
+            const cy = state.height / 2 + state.offsetY;
+            
+            const oldZoom = state.zoom;
             state.zoom = Math.max(0.15, Math.min(50, state.zoom * zoomFactor));
+            const zoomChange = state.zoom / oldZoom;
+            
+            // Adjust offsets so pinch center stays fixed
+            state.offsetX = mx - state.width / 2 - (mx - cx) * zoomChange;
+            state.offsetY = my - state.height / 2 - (my - cy) * zoomChange;
+            
             lastTouchDist = dist;
+            lastTouchCenter = { x: mx, y: my };
         }
         e.preventDefault();
     }, { passive: false });
@@ -948,6 +1040,7 @@
     // Time slider
     timeSlider.addEventListener('input', () => {
         state.isLive = false;
+        stopPlayback();
         liveIndicator.classList.add('inactive');
         liveIndicator.querySelector('span:last-child').textContent = 'HISTÓRICO';
         btnLive.classList.remove('active');
@@ -958,9 +1051,26 @@
 
     btnLive.addEventListener('click', () => {
         state.isLive = true;
+        stopPlayback();
         liveIndicator.classList.remove('inactive');
         liveIndicator.querySelector('span:last-child').textContent = 'EN VIVO';
         btnLive.classList.add('active');
+    });
+
+    // Play/pause button
+    btnPlay.addEventListener('click', () => {
+        if (state.isPlaying) {
+            stopPlayback();
+            // Stay on the current time (paused in HISTÓRICO mode)
+            liveIndicator.classList.add('inactive');
+            liveIndicator.querySelector('span:last-child').textContent = 'HISTÓRICO';
+        } else {
+            // If at the end, restart from beginning
+            if (state.viewJD >= DATA_END_JD - 0.01) {
+                state.viewJD = DATA_START_JD;
+            }
+            startPlayback();
+        }
     });
 
     // Window resize

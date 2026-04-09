@@ -37,6 +37,7 @@ body {
     color: var(--text-primary);
     overflow: hidden;
     height: 100vh;
+    height: 100dvh;
     width: 100vw;
 }
 
@@ -44,6 +45,7 @@ body {
     display: flex;
     flex-direction: column;
     height: 100vh;
+    height: 100dvh;
     width: 100vw;
 }
 
@@ -168,6 +170,8 @@ main {
     transform: translateX(-50%);
     z-index: 10;
     pointer-events: none;
+    width: max-content;
+    max-width: 98%;
 }
 
 .info-row {
@@ -175,6 +179,10 @@ main {
     gap: 0.5rem;
     flex-wrap: wrap;
     justify-content: center;
+}
+
+.info-row-mobile {
+    display: none;
 }
 
 .info-card {
@@ -473,10 +481,29 @@ main {
     align-items: center;
     gap: 0.75rem;
     padding: 0.6rem 1.5rem;
+    padding-bottom: calc(0.6rem + env(safe-area-inset-bottom, 0px));
     background: linear-gradient(0deg, rgba(10, 14, 26, 0.95) 0%, rgba(10, 14, 26, 0.8) 100%);
     border-top: 1px solid var(--border-color);
     backdrop-filter: blur(12px);
     z-index: 10;
+}
+
+/* ===== Play Button ===== */
+.btn-play {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+    transition: all 0.2s;
+    padding: 0;
+}
+
+.btn-play.playing {
+    background: rgba(74, 222, 128, 0.15);
+    border-color: rgba(74, 222, 128, 0.5);
+    color: var(--accent-green);
+    box-shadow: 0 0 12px rgba(74, 222, 128, 0.2);
 }
 
 .time-label {
@@ -558,27 +585,105 @@ main {
 
 /* ===== Stars background (drawn on canvas) ===== */
 
+/* ===== Mobile Info Strip ===== */
+.info-strip {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.35rem 0.6rem;
+    backdrop-filter: blur(16px);
+    pointer-events: auto;
+}
+
+.info-strip-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.05rem;
+    min-width: 0;
+}
+
+.info-strip-label {
+    font-size: 0.5rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 500;
+    line-height: 1;
+}
+
+.info-strip-value {
+    font-size: 0.65rem;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    color: var(--accent-cyan);
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    line-height: 1.1;
+}
+
+.info-strip-sep {
+    color: var(--border-color);
+    font-size: 0.7rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.info-strip-progress {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.3rem 0.6rem;
+    backdrop-filter: blur(16px);
+    pointer-events: auto;
+}
+
+.info-strip-progress .progress-bar {
+    width: 50px;
+    margin-top: 0;
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 768px) {
     header {
-        padding: 0.5rem 0.75rem;
+        padding: 0.4rem 0.6rem;
     }
     
     header h1 {
-        font-size: 0.9rem;
+        font-size: 0.85rem;
     }
-    
-    .info-row {
+
+    .subtitle {
+        font-size: 0.6rem;
+    }
+
+    .badge-icon {
+        font-size: 1.4rem;
+    }
+
+    .data-source {
+        display: none;
+    }
+
+    .info-row-desktop {
+        display: none;
+    }
+
+    .info-row-mobile {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
         gap: 0.3rem;
     }
-    
-    .info-card {
-        min-width: 95px;
-        padding: 0.3rem 0.5rem;
-    }
-    
-    .info-value {
-        font-size: 0.75rem;
+
+    .info-panel {
+        top: 0.4rem;
     }
     
     .legend {
@@ -586,6 +691,41 @@ main {
     }
     
     .scale-indicator {
-        bottom: 4rem;
+        bottom: 3.5rem;
+    }
+
+    .time-control {
+        padding: 0.45rem 0.6rem;
+        padding-bottom: calc(0.45rem + env(safe-area-inset-bottom, 0px));
+        gap: 0.4rem;
+    }
+
+    .time-label {
+        display: none;
+    }
+
+    .time-display {
+        font-size: 0.6rem;
+        min-width: 100px;
+    }
+
+    .btn-live {
+        font-size: 0.6rem;
+        padding: 0.25rem 0.45rem;
+    }
+
+    .btn-play {
+        width: 28px;
+        height: 28px;
+        font-size: 0.7rem;
+    }
+
+    .controls {
+        right: 0.5rem;
+    }
+
+    .ctrl-btn {
+        width: 32px;
+        height: 32px;
     }
 }

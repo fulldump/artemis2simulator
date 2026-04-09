@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Artemis II — Seguimiento en Tiempo Real</title>
     <meta name="description" content="Visualización a escala real de la trayectoria de la misión Artemis II alrededor de la Luna, con datos de telemetría del JPL Horizons de la NASA.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -39,7 +39,7 @@
             
             <!-- Info overlay -->
             <div id="infoPanel" class="info-panel">
-                <div class="info-row">
+                <div class="info-row info-row-desktop">
                     <div class="info-card" id="cardMET">
                         <span class="info-label">Tiempo de misión (MET)</span>
                         <span class="info-value" id="metValue">--:--:--</span>
@@ -62,6 +62,36 @@
                         <div class="progress-bar">
                             <div class="progress-fill" id="progressFill"></div>
                         </div>
+                    </div>
+                </div>
+                <!-- Compact mobile info strip -->
+                <div class="info-row info-row-mobile">
+                    <div class="info-strip">
+                        <div class="info-strip-item">
+                            <span class="info-strip-label">MET</span>
+                            <span class="info-strip-value" id="metValueMobile">--:--:--</span>
+                        </div>
+                        <span class="info-strip-sep">│</span>
+                        <div class="info-strip-item">
+                            <span class="info-strip-label">Fase</span>
+                            <span class="info-strip-value phase-value" id="phaseValueMobile">—</span>
+                        </div>
+                        <span class="info-strip-sep">│</span>
+                        <div class="info-strip-item">
+                            <span class="info-strip-label">🌍</span>
+                            <span class="info-strip-value" id="distEarthValueMobile">—</span>
+                        </div>
+                        <span class="info-strip-sep">│</span>
+                        <div class="info-strip-item">
+                            <span class="info-strip-label">🌙</span>
+                            <span class="info-strip-value" id="distMoonValueMobile">—</span>
+                        </div>
+                    </div>
+                    <div class="info-strip-progress">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFillMobile"></div>
+                        </div>
+                        <span class="info-strip-value" id="progressValueMobile" style="font-size:0.6rem">—%</span>
                     </div>
                 </div>
             </div>
@@ -118,6 +148,7 @@
 
             <!-- Time slider -->
             <div id="timeControl" class="time-control">
+                <button id="btnPlay" class="ctrl-btn btn-play" title="Reproducir misión">▶</button>
                 <label for="timeSlider" class="time-label">Explorar cronología:</label>
                 <input type="range" id="timeSlider" min="0" max="1000" value="0" step="1">
                 <span id="timeDisplay" class="time-display">—</span>
